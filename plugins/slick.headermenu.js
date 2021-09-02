@@ -180,8 +180,8 @@
           $el.css("background-image", "url(" + options.buttonImage + ")");
         }
 
-        if (options.tooltip) {
-          $el.attr("title", options.tooltip);
+        if (menu.tooltip) {
+          $el.attr("title", menu.tooltip);
         }
 
         $el
@@ -302,8 +302,8 @@
       // to simulate an align left, we actually need to know the width of the drop menu
       if (options.autoAlign) {
         var gridPos = _grid.getGridPosition();
-        if ((leftPos + $menu.width()) >= gridPos.width) {
-          leftPos = leftPos + $menuButton.outerWidth() - $menu.outerWidth() + options.autoAlignOffset;
+        if ((leftPos + options.minWidth) >= gridPos.width) {
+          leftPos = leftPos - options.minWidth + options.autoAlignOffset;
         }
       }
 

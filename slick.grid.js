@@ -1355,7 +1355,6 @@ if (typeof Slick === "undefined") {
             return;
           }
 
-          var previousSortColumns = $.extend(true, [], sortColumns);
           var sortColumn = null;
           var i = 0;
           for (; i < sortColumns.length; i++) {
@@ -1401,28 +1400,22 @@ if (typeof Slick === "undefined") {
               }
           }
 
-          var onSortArgs;
+          setSortColumns(sortColumns);
+
           if (!options.multiColumnSort) {
-            onSortArgs = {
+            trigger(self.onSort, {
               multiColumnSort: false,
-              previousSortColumns: previousSortColumns,
               columnId: (sortColumns.length > 0 ? column.id : null),
               sortCol: (sortColumns.length > 0 ? column : null),
               sortAsc: (sortColumns.length > 0 ? sortColumns[0].sortAsc : true)
-            };
+            }, e);
           } else {
-            onSortArgs = {
+            trigger(self.onSort, {
               multiColumnSort: true,
-              previousSortColumns: previousSortColumns,
               sortCols: $.map(sortColumns, function(col) {
                 return {columnId: columns[getColumnIndex(col.columnId)].id, sortCol: columns[getColumnIndex(col.columnId)], sortAsc: col.sortAsc };
               })
-            };
-          }
-
-          if (trigger(self.onBeforeSort, onSortArgs, e) !== false) {
-            setSortColumns(sortColumns);
-            trigger(self.onSort, onSortArgs, e);
+            }, e);
           }
         }
       });
@@ -2229,6 +2222,9 @@ if (typeof Slick === "undefined") {
       }
       var $gridCanvas = $(getCanvasNode(0, 0));
       getColAutosizeWidth(c, $gridCanvas, isInit);
+      if (c.autoSize && c.autoSize.widthPx) {
+          c.width = c.autoSize.widthPx;
+        }
     }
 
     function autosizeColumns(autosizeMode, isInit) {
@@ -2372,8 +2368,10 @@ if (typeof Slick === "undefined") {
         if (dl > 0) {
           var tempRow = getDataItem(0);
           if (tempRow) {
-            colDataItem = tempRow[columnDef.field];
-            colDataTypeOf = typeof colDataItem;
+            colDataItem = getDataItemValueForColumn(tempRow, columnDef);
+            colDataTypeOf = typeof colDataItem;  
+            colDataItem = getFormattedValueForColumn(tempRow,columnDef)
+            
             if (colDataTypeOf === 'object') {
               if (colDataItem instanceof Date) { colDataTypeOf = "date"; }
               if (typeof moment!=='undefined' && colDataItem instanceof moment) { colDataTypeOf = "moment"; }
@@ -2445,7 +2443,7 @@ if (typeof Slick === "undefined") {
       if (autoSize.valueFilterMode === Slick.ValueFilterMode.DeDuplicate) {
         var rowsDict = {};
         for (i = 0, ii = rows.length; i < ii; i++) {
-          rowsDict[rows[i][columnDef.field]] = true;
+          rowsDict[getDataItemValueForColumn(rows[i],columnDef)] = true;
         }
         if (Object.keys) {
           rows = Object.keys(rowsDict);
@@ -2459,7 +2457,7 @@ if (typeof Slick === "undefined") {
         // get greatest abs value in data
         var tempVal, maxVal, maxAbsVal = 0;
         for (i = 0, ii = rows.length; i < ii; i++) {
-          tempVal = rows[i][columnDef.field];
+          tempVal = getFormattedValueForColumn(rows[i],columnDef);  
           if (Math.abs(tempVal) > maxAbsVal) { maxVal = tempVal; maxAbsVal = Math.abs(tempVal); }
         }
         // now substitute a '9' for all characters (to get widest width) and convert back to a number
@@ -2474,7 +2472,8 @@ if (typeof Slick === "undefined") {
         // get greatest abs value in data
         var tempVal, maxLen = 0;
         for (i = 0, ii = rows.length; i < ii; i++) {
-          tempVal = rows[i][columnDef.field];
+          tempVal = getFormattedValueForColumn(row[i],columnDef); 
+        
           if ((tempVal || '').length > maxLen) { maxLen = tempVal.length; }
         }
         // now substitute a 'c' for all characters
@@ -2488,11 +2487,11 @@ if (typeof Slick === "undefined") {
         // get greatest abs value in data
         var tempVal, maxLen = 0, maxIndex = 0;
         for (i = 0, ii = rows.length; i < ii; i++) {
-          tempVal = rows[i][columnDef.field];
+          tempVal = getFormattedValueForColumn(rows[i],columnDef); 
           if ((tempVal || '').length > maxLen) { maxLen = tempVal.length; maxIndex = i; }
         }
         // now substitute a 'c' for all characters
-        tempVal = rows[maxIndex][columnDef.field];
+        tempVal = getFormattedValueForColumn(rows[maxIndex],columnDef);
         rows = [ tempVal ];
       }
 
@@ -2516,13 +2515,19 @@ if (typeof Slick === "undefined") {
         $gridCanvas.append($rowEl);
 
         var len, max = 0, text, maxText, formatterResult, maxWidth = 0, val;
-
+        var ExtractValue = function (row, columnDef) {
+          if (Array.isArray(row))
+            return row[columnDef.field]
+          else if (options.dataItemColumnValueExtractor && toString.call(row) == '[object Object]')
+           { return getFormattedValueForColumn(row, columnDef);}
+          return row;
+        }
          // use canvas - very fast, but text-only
         if (canvas_context && columnDef.autoSize.widthEvalMode === Slick.WidthEvalMode.CanvasTextSize) {
           canvas_context.font = $cellEl.css("font-size") + " " + $cellEl.css("font-family");
           $(data).each(function (index, row) {
               // row is either an array or values or a single value
-              val = (Array.isArray(row) ? row[columnDef.field] : row);
+              var val = ExtractValue(row,columnDef);  
               text = '' + val;
               len = text ? canvas_context.measureText(text).width : 0;
               if (len > max) { max = len; maxText = text; }
@@ -2537,7 +2542,8 @@ if (typeof Slick === "undefined") {
         }
 
         $(data).each(function (index, row) {
-            val = (Array.isArray(row) ? row[columnDef.field] : row);
+            var val = ExtractValue(row,columnDef);  
+
             if (columnDef.formatterOverride) {
               // use formatterOverride as first preference
               formatterResult = columnDef.formatterOverride(index, colIndex, val, columnDef, row, self);
@@ -2884,8 +2890,6 @@ if (typeof Slick === "undefined") {
     }
 
     function setColumns(columnDefinitions) {
-      trigger(self.onBeforeSetColumns, { previousColumns: columns, newColumns: columnDefinitions, grid: self });
-
       var _treeColumns = new Slick.TreeColumns(columnDefinitions);
       if (_treeColumns.hasDepth()) {
         treeColumns = _treeColumns;
@@ -3224,6 +3228,12 @@ if (typeof Slick === "undefined") {
         return options.dataItemColumnValueExtractor(item, columnDef);
       }
       return item[columnDef.field];
+    }
+    function getFormattedValueForColumn(item,columnDef){
+      var tempVal = getDataItemValueForColumn(item,columnDef);
+      if (columnDef.formatter) 
+            tempVal = columnDef.formatter(item, null, tempVal, columnDef, null);
+      return tempVal;
     }
 
     function appendRowHtml(stringArrayL, stringArrayR, row, range, dataLength) {
@@ -4054,27 +4064,21 @@ if (typeof Slick === "undefined") {
 
       for (var i = 0, ii = rows.length; i < ii; i++) {
         if (( hasFrozenRows ) && ( rows[i] >= actualFrozenRow )) {
-            if (hasFrozenColumns()) {
-                rowsCache[rows[i]].rowNode = $()
-                    .add($(x.firstChild))
-                    .add($(xRight.firstChild));
-                $canvasBottomL.append(x.firstChild);
-                $canvasBottomR.append(xRight.firstChild);
-            } else {
-                rowsCache[rows[i]].rowNode = $()
-                    .add($(x.firstChild));
-                $canvasBottomL.append($(x.firstChild));
-            }
+          if (hasFrozenColumns()) {
+            rowsCache[rows[i]].rowNode = $()
+              .add($(x.firstChild).appendTo($canvasBottomL))
+              .add($(xRight.firstChild).appendTo($canvasBottomR));
+          } else {
+            rowsCache[rows[i]].rowNode = $()
+              .add($(x.firstChild).appendTo($canvasBottomL));
+          }
         } else if (hasFrozenColumns()) {
-            rowsCache[rows[i]].rowNode = $()
-                .add($(x.firstChild))
-                .add($(xRight.firstChild));
-            $canvasTopL.append(x.firstChild);
-            $canvasTopR.append(xRight.firstChild);
+          rowsCache[rows[i]].rowNode = $()
+            .add($(x.firstChild).appendTo($canvasTopL))
+            .add($(xRight.firstChild).appendTo($canvasTopR));
         } else {
-            rowsCache[rows[i]].rowNode = $()
-                .add($(x.firstChild));
-            $canvasTopL.append(x.firstChild);
+          rowsCache[rows[i]].rowNode = $()
+            .add($(x.firstChild).appendTo($canvasTopL));
         }
       }
 
@@ -4665,10 +4669,8 @@ if (typeof Slick === "undefined") {
         // if this click resulted in some cell child node getting focus,
         // don't steal it back - keyboard events will still bubble up
         // IE9+ seems to default DIVs to tabIndex=0 instead of -1, so check for cell clicks directly.
-	if (e.target != document.activeElement || $(e.target).hasClass("slick-cell")) {
-          var selection = getTextSelection(); //store text-selection and restore it after
+        if (e.target != document.activeElement || $(e.target).hasClass("slick-cell")) {
           setFocus();
-          setTextSelection(selection);
         }
       }
 
@@ -5231,27 +5233,6 @@ if (typeof Slick === "undefined") {
 
     function getActiveCellNode() {
       return activeCellNode;
-    }
-	  
-    //This get/set methods are used for keeping text-selection. These don't consider IE because they don't loose text-selection.
-    //Fix for firefox selection. See https://github.com/mleibman/SlickGrid/pull/746/files
-    function getTextSelection(){
-      var textSelection = null;
-      if (window.getSelection) {
-        var selection = window.getSelection();
-        if (selection.rangeCount > 0) {
-          textSelection = selection.getRangeAt(0);
-        }
-      }
-      return textSelection;
-    }
-
-    function setTextSelection(selection){
-      if (window.getSelection && selection) {
-        var target = window.getSelection();
-        target.removeAllRanges();
-        target.addRange(selection);
-      }
     }
 
     function scrollRowIntoView(row, doPaging) {
@@ -5950,7 +5931,6 @@ if (typeof Slick === "undefined") {
 
       // Events
       "onScroll": new Slick.Event(),
-      "onBeforeSort": new Slick.Event(),
       "onSort": new Slick.Event(),
       "onHeaderMouseEnter": new Slick.Event(),
       "onHeaderMouseLeave": new Slick.Event(),
@@ -5993,7 +5973,6 @@ if (typeof Slick === "undefined") {
       "onSelectedRowsChanged": new Slick.Event(),
       "onCellCssStylesChanged": new Slick.Event(),
       "onAutosizeColumns": new Slick.Event(),
-      "onBeforeSetColumns": new Slick.Event(),
       "onRendered": new Slick.Event(),
       "onSetOptions": new Slick.Event(),
 
